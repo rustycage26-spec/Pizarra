@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Pizarra Colaborativa Escala Fija</title>
+  <title>Pizarra Colaborativa</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; }
     body { display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; background: #0f172a; overflow: hidden; }
@@ -12,19 +12,20 @@
     #toolbar button { background: #3b82f6; color: white; font-weight: bold; }
     #toolbar button:hover { background: #2563eb; }
     
-    #canvas-container { 
+    #board-container { 
       flex: 1; 
       display: flex; 
       justify-content: center; 
       align-items: center; 
       background: #0f172a; 
       position: relative;
+      width: 100%;
+      height: 100%;
     }
     
-    /* El canvas mantiene una proporción fija 16:9 siempre */
     canvas { 
       background: #ffffff; 
-      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
       touch-action: none;
     }
   </style>
@@ -39,7 +40,7 @@
   <button id="btnBorrar" style="background: #ef4444;">🗑️ Limpiar Todo</button>
 </div>
 
-<div id="canvas-container" id="container">
+<div id="board-container">
   <canvas id="pizarra" width="1920" height="1080"></canvas>
 </div>
 
@@ -48,19 +49,16 @@
   const socket = io();
   const canvas = document.getElementById('pizarra');
   const ctx = canvas.getContext('2d');
-  const container = document.getElementById('canvas-container');
+  const container = document.getElementById('board-container');
 
-  // Dimensiones internas fijas (Resolución base HD)
   const VIRTUAL_WIDTH = 1920;
   const VIRTUAL_HEIGHT = 1080;
-
   let scale = 1;
 
   function resizeBoard() {
     const containerWidth = container.clientWidth;
     const containerHeight = container.clientHeight;
 
-    // Calcular escala manteniendo aspect ratio 16:9
     scale = Math.min(containerWidth / VIRTUAL_WIDTH, containerHeight / VIRTUAL_HEIGHT);
 
     canvas.style.width = `${VIRTUAL_WIDTH * scale}px`;
@@ -86,7 +84,6 @@
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     
-    // Mapeo exacto de las coordenadas virtuales de 1920x1080
     return {
       x: (clientX - rect.left) / scale,
       y: (clientY - rect.top) / scale
