@@ -1,0 +1,133 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Pizarra Colaborativa</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; }
+    body { display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; background: #f0f2f5; }
+    #toolbar { background: #1e293b; color: white; padding: 12px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+    #toolbar button, #toolbar input, #toolbar select { padding: 8px 14px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; }
+    #toolbar button { background: #3b82f6; color: white; font-weight: bold; }
+    #toolbar button:hover { background: #2563eb; }
+    #canvas-container { flex: 1; position: relative; background: #ffffff; }
+    canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+  </style>
+</head>
+<body>
+
+<div id="toolbar">
+  <label>Color: <input type="color" id="colorPicker" value="#000000"></label>
+  <label>Grosor: <input type="range" id="lineWidth" min="1" max="20" value="3"></label>
+  <button id="btnLapis">✏️ Lápiz</button>
+  <button id="btnTexto">🔤 Texto</button>
+  <button id="btnBorrar" style="background: #ef4444;">🗑️ Limpiar Todo</button>
+</div>
+
+<div id="canvas-container">
+  <canvas id="pizarra"></canvas>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const canvas = document.getElementById('pizarra');
+  const ctx = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  let drawing = false;
+  let mode = 'draw';
+  let prevPos = null;
+
+  const colorPicker = document.getElementById('colorPicker');
+  const lineWidth = document.getElementById('lineWidth');
+
+  document.getElementById('btnLapis').onclick = () => mode = 'draw';
+  document.getElementById('btnTexto').onclick = () => mode = 'text';
+  document.getElementById('btnBorrar').onclick = () => socket.emit('clear');
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: (clientX - rect.left) / canvas.width,
+      y: (clientY - rect.top) / canvas.height
+    };
+  }
+
+  function drawSegment(x1, y1, x2, y2, color, size) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = size;
+    ctx.lineCap = 'round';
+    ctx.moveTo(x1 * canvas.width, y1 * canvas.height);
+    ctx.lineTo(x2 * canvas.width, y2 * canvas.height);
+    ctx.stroke();
+  }
+
+  function renderText(text, x, y, color) {
+    ctx.font = '22px Arial';
+    ctx.fillStyle = color;
+    ctx.fillText(text, x * canvas.width, y * canvas.height);
+  }
+
+  function startAction(e) {
+    const pos = getPos(e);
+    if (mode === 'draw') {
+      drawing = true;
+      prevPos = pos;
+    } else if (mode === 'text') {
+      const text = prompt("Ingresa el texto o respuesta:");
+      if (text) {
+        const textData = { text, x: pos.x, y: pos.y, color: colorPicker.value };
+        renderText(textData.text, textData.x, textData.y, textData.color);
+        socket.emit('add-text', textData);
+      }
+    }
+  }
+
+  function moveAction(e) {
+    if (!drawing || mode !== 'draw') return;
+    const currentPos = getPos(e);
+    const lineData = {
+      x1: prevPos.x, y1: prevPos.y,
+      x2: currentPos.x, y2: currentPos.y,
+      color: colorPicker.value,
+      size: lineWidth.value
+    };
+    drawSegment(lineData.x1, lineData.y1, lineData.x2, lineData.y2, lineData.color, lineData.size);
+    socket.emit('draw-line', lineData);
+    prevPos = currentPos;
+  }
+
+  function endAction() { drawing = false; }
+
+  canvas.addEventListener('mousedown', startAction);
+  canvas.addEventListener('mousemove', moveAction);
+  canvas.addEventListener('mouseup', endAction);
+
+  canvas.addEventListener('touchstart', startAction);
+  canvas.addEventListener('touchmove', moveAction);
+  canvas.addEventListener('touchend', endAction);
+
+  socket.on('draw-line', data => drawSegment(data.x1, data.y1, data.x2, data.y2, data.color, data.size));
+  socket.on('add-text', data => renderText(data.text, data.x, data.y, data.color));
+  socket.on('clear', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
+  socket.on('load-history', history => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    history.forEach(item => {
+      if (item.type === 'line') drawSegment(item.x1, item.y1, item.x2, item.y2, item.color, item.size);
+      if (item.type === 'text') renderText(item.text, item.x, item.y, item.color);
+    });
+  });
+</script>
+</body>
+</html>
