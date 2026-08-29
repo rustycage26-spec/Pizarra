@@ -3,16 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Pizarra Colaborativa En Vivo</title>
+  <title>Pizarra Colaborativa Escala Fija</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; }
-    body { display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; background: #f0f2f5; }
-    #toolbar { background: #1e293b; color: white; padding: 12px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+    body { display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; background: #0f172a; overflow: hidden; }
+    #toolbar { background: #1e293b; color: white; padding: 12px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; z-index: 10; }
     #toolbar button, #toolbar input { padding: 8px 14px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; }
     #toolbar button { background: #3b82f6; color: white; font-weight: bold; }
     #toolbar button:hover { background: #2563eb; }
-    #canvas-container { flex: 1; position: relative; background: #ffffff; }
-    canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+    
+    #canvas-container { 
+      flex: 1; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      background: #0f172a; 
+      position: relative;
+    }
+    
+    /* El canvas mantiene una proporción fija 16:9 siempre */
+    canvas { 
+      background: #ffffff; 
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      touch-action: none;
+    }
   </style>
 </head>
 <body>
@@ -25,8 +39,8 @@
   <button id="btnBorrar" style="background: #ef4444;">🗑️ Limpiar Todo</button>
 </div>
 
-<div id="canvas-container">
-  <canvas id="pizarra"></canvas>
+<div id="canvas-container" id="container">
+  <canvas id="pizarra" width="1920" height="1080"></canvas>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -34,13 +48,27 @@
   const socket = io();
   const canvas = document.getElementById('pizarra');
   const ctx = canvas.getContext('2d');
+  const container = document.getElementById('canvas-container');
 
-  function resizeCanvas() {
-    canvas.width = canvas.parentElement.clientWidth;
-    canvas.height = canvas.parentElement.clientHeight;
+  // Dimensiones internas fijas (Resolución base HD)
+  const VIRTUAL_WIDTH = 1920;
+  const VIRTUAL_HEIGHT = 1080;
+
+  let scale = 1;
+
+  function resizeBoard() {
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    // Calcular escala manteniendo aspect ratio 16:9
+    scale = Math.min(containerWidth / VIRTUAL_WIDTH, containerHeight / VIRTUAL_HEIGHT);
+
+    canvas.style.width = `${VIRTUAL_WIDTH * scale}px`;
+    canvas.style.height = `${VIRTUAL_HEIGHT * scale}px`;
   }
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
+
+  window.addEventListener('resize', resizeBoard);
+  resizeBoard();
 
   let drawing = false;
   let mode = 'draw';
@@ -57,9 +85,11 @@
     const rect = canvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    // Mapeo exacto de las coordenadas virtuales de 1920x1080
     return {
-      x: (clientX - rect.left) / canvas.width,
-      y: (clientY - rect.top) / canvas.height
+      x: (clientX - rect.left) / scale,
+      y: (clientY - rect.top) / scale
     };
   }
 
@@ -68,15 +98,16 @@
     ctx.strokeStyle = color;
     ctx.lineWidth = size;
     ctx.lineCap = 'round';
-    ctx.moveTo(x1 * canvas.width, y1 * canvas.height);
-    ctx.lineTo(x2 * canvas.width, y2 * canvas.height);
+    ctx.lineJoin = 'round';
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
     ctx.stroke();
   }
 
   function renderText(text, x, y, color) {
-    ctx.font = '22px Arial';
+    ctx.font = '32px Arial';
     ctx.fillStyle = color;
-    ctx.fillText(text, x * canvas.width, y * canvas.height);
+    ctx.fillText(text, x, y);
   }
 
   function startAction(e) {
@@ -103,7 +134,6 @@
       color: colorPicker.value,
       size: lineWidth.value
     };
-    // Dibuja en local y emite inmediatamente a todos los demás usuarios
     drawSegment(lineData.x1, lineData.y1, lineData.x2, lineData.y2, lineData.color, lineData.size);
     socket.emit('draw-line', lineData);
     prevPos = currentPos;
@@ -119,12 +149,10 @@
   canvas.addEventListener('touchmove', moveAction);
   canvas.addEventListener('touchend', endAction);
 
-  // Escucha trazos y textos en tiempo real emitidos por otros usuarios
   socket.on('draw-line', data => drawSegment(data.x1, data.y1, data.x2, data.y2, data.color, data.size));
   socket.on('add-text', data => renderText(data.text, data.x, data.y, data.color));
   socket.on('clear', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
   
-  // Carga todo lo dibujado anteriormente por cualquier usuario
   socket.on('load-history', history => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     history.forEach(item => {
