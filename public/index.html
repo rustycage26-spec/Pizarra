@@ -1,14 +1,14 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Pizarra Colaborativa</title>
+  <title>Pizarra Colaborativa En Vivo</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; }
     body { display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; background: #f0f2f5; }
     #toolbar { background: #1e293b; color: white; padding: 12px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-    #toolbar button, #toolbar input, #toolbar select { padding: 8px 14px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; }
+    #toolbar button, #toolbar input { padding: 8px 14px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; }
     #toolbar button { background: #3b82f6; color: white; font-weight: bold; }
     #toolbar button:hover { background: #2563eb; }
     #canvas-container { flex: 1; position: relative; background: #ffffff; }
@@ -103,6 +103,7 @@
       color: colorPicker.value,
       size: lineWidth.value
     };
+    // Dibuja en local y emite inmediatamente a todos los demás usuarios
     drawSegment(lineData.x1, lineData.y1, lineData.x2, lineData.y2, lineData.color, lineData.size);
     socket.emit('draw-line', lineData);
     prevPos = currentPos;
@@ -118,9 +119,12 @@
   canvas.addEventListener('touchmove', moveAction);
   canvas.addEventListener('touchend', endAction);
 
+  // Escucha trazos y textos en tiempo real emitidos por otros usuarios
   socket.on('draw-line', data => drawSegment(data.x1, data.y1, data.x2, data.y2, data.color, data.size));
   socket.on('add-text', data => renderText(data.text, data.x, data.y, data.color));
   socket.on('clear', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
+  
+  // Carga todo lo dibujado anteriormente por cualquier usuario
   socket.on('load-history', history => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     history.forEach(item => {
